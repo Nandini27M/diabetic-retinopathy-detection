@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DR Image Classifier</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: url('static/eye.jpg') no-repeat center center fixed;
+      background-size: cover;
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      overflow: hidden;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(5px);
+      z-index: 0;
+    }
+
+    .container {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      backdrop-filter: blur(15px);
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.3);
+      padding: 40px 30px;
+      border-radius: 25px;
+      max-width: 640px;
+      width: 92%;
+      text-align: center;
+      z-index: 1;
+      animation: fadeIn 0.6s ease-out;
+      color: #fff;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translate(-50%, -60%); }
+      to   { opacity: 1; transform: translate(-50%, -50%); }
+    }
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 20px;
+      font-weight: 600;
+      text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+    }
+
+    input[type="file"] {
+      margin: 20px 0;
+      padding: 12px;
+      border: 2px dashed #bb86fc;
+      border-radius: 12px;
+      background-color: #fff;
+      cursor: pointer;
+      width: 100%;
+      color: #333;
+    }
+
+    button {
+      background-color: #bb86fc;
+      color: white;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      margin-top: 12px;
+      transition: all 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #9b59b6;
+      transform: scale(1.05);
+      box-shadow: 0 0 10px #bb86fc;
+    }
+
+    .result {
+      margin-top: 20px;
+      font-size: 16px;
+      font-weight: 500;
+      color: #fff;
+      text-align: left;
+    }
+
+    .prob-row { margin: 10px 0; }
+
+    .bar {
+      height: 10px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background: #bb86fc;
+      transition: width .4s ease;
+    }
+
+    #preview {
+      display:block;
+      margin: 18px auto 0;
+      max-width: 80%;
+      border-radius: 15px;
+      box-shadow: 0 0 12px rgba(0,0,0,0.4);
+    }
+
+    .error-box {
+      margin-top: 20px;
+      padding: 12px;
+      border-radius: 10px;
+      background: rgba(255,0,0,0.2);
+      border: 1px solid rgba(255,50,50,0.5);
+      color: #ffb3b3;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌟 Diabetic Retinopathy Predictor</h1>
+
+    <input type="file" id="image" accept="image/*" />
+    <br />
+    <button onclick="classify()">📸 Classify Image</button>
+
+    <div class="result" id="result"></div>
+    <img id="preview" alt="">
+    <div id="errorBox"></div>
+  </div>
+
+  <script>
+    // DR class labels
+    const classNames = ["No DR","Mild DR","Moderate DR","Severe DR","Proliferative DR"];
+
+    // Explanations
+    const classExplanations = {
+      "No DR": "No signs of diabetic retinopathy are detected. The retina looks healthy.",
+      "Mild DR": "Tiny bulges in blood vessels (microaneurysms) suggest early diabetic retinopathy.",
+      "Moderate DR": "Microaneurysms with hemorrhages/exudates and some vessel changes are visible.",
+      "Severe DR": "Extensive hemorrhages and ischemic signs suggest widespread retinal damage.",
+      "Proliferative DR": "New abnormal blood vessels are growing (neovascularization), indicating advanced disease."
+    };
+
+    function classify() {
+      const fileInput = document.getElementById('image');
+      const resultDiv = document.getElementById('result');
+      const previewImg = document.getElementById('preview');
+      const errorBox = document.getElementById('errorBox');
+
+      errorBox.innerHTML = ""; // clear error
+      resultDiv.innerHTML = "";
+
+      const file = fileInput.files[0];
+      if (!file) {
+        alert('Please upload an image first.');
+        return;
+      }
+
+      // Show preview
+      const reader = new FileReader();
+      reader.onload = () => { previewImg.src = reader.result; };
+      reader.readAsDataURL(file);
+
+      // Prepare request
+      const formData = new FormData();
+      formData.append('image', file);
+
+      // Call backend
+      fetch('/predict', { method: 'POST', body: formData })
+        .then(res => {
+          if (!res.ok) { throw new Error("Server error - " + res.status); }
+          return res.json();
+        })
+        .then(data => {
+          const { predicted_class_name, class_probabilities } = data;
+
+          const explanation = classExplanations[predicted_class_name] || "No explanation available.";
+
+          let html = `<h3>✅ Predicted: ${predicted_class_name}</h3>`;
+          html += `<p style="color:#ffd; font-size:16px;"> Reason: ${explanation}</p>`;
+
+          html += `<h4>📊 Probabilities</h4>`;
+          (class_probabilities || []).forEach((prob, i) => {
+            html += `
+              <div class="prob-row">
+                ${classNames[i]}: ${(prob * 100).toFixed(2)}%
+                <div class="bar">
+                  <div class="bar-fill" style="width:${(prob * 100).toFixed(2)}%"></div>
+                </div>
+              </div>`;
+          });
+
+          resultDiv.innerHTML = html;
+        })
+        .catch(error => {
+          previewImg.src = "https://via.placeholder.com/300x200/ff0000/ffffff?text=Error"; // Show error placeholder image
+          errorBox.innerHTML = `<div class="error-box">❌ Something went wrong: ${error.message}</div>`;
+        });
+    }
+  </script>
+</body>
+</html>
